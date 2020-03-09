@@ -8,6 +8,9 @@ from enum import Enum
 from random import randint
 from time import sleep
 import sys
+import os
+import json
+import time
 
 app = Flask(__name__)
 
@@ -233,29 +236,33 @@ def get_name_nickname_messages(page_limit=2):
     TODO: consider the scalability concerns of getting all msgs for all members
     """
     all_members = find_all_members()
-    # all_messages = find_all_messages(page_limit=page_limit)
+
+    ONE_HOUR = 1.0 * 60.0 * 60.0
+    HALF_HOUR = 0.5 * 60.0 * 60.0
+    QUARTER_HOUR = 0.25 * 60.0 * 60.0
+
+    # improve performance by caching the messages.json
+    # TODO: be smarter && only append new data into messages.json
+    # TODO: perhaps appending could happen via `/new-groupme-message/` route?
+    if ("messages.json" in os.listdir()) and (
+        os.path.getctime("messages.json") - time.time()
+    ) < QUARTER_HOUR:
+        with open("messages.json") as f:
+            all_messages = json.load(f)
+    else:
+        all_messages = find_all_messages(page_limit=page_limit)
+        with open("messages.json") as f:
+            json.dump(all_messages)
     if all_members is not None and type(all_members) is list:
-        all_members_table = get_relevant_data_as_2d_list(all_members)
-        # all_messages_table = get_relevant_message_data_as_table(all_messages)
-        members_df = pd.DataFrame()
-        members_df[
-            "group_member_index"
-        ] = all_members_table.ids  # member ids are unique to group  # noqa
-        members_df["names"] = all_members_table.names
-        members_df["nicknames"] = all_members_table.nicknames
-        members_df.to_csv("members.csv")
-        exit()
-        messages_df = pd.DataFrame()
-        messages_df[
-            "group_message_index"
-        ] = all_messages_table.ids  # message ids are unique to group
-        messages_df["member_index"] = all_messages_table.sender_ids
-        messages_df['text'] = all_messages_table.texts
-
-        # only user messages
-        messages_df = messages_df[messages_df['member_index'] != "system"]
-
-        return jsonify(all_members_table), 200
+        messages_df = pd.DataFrame(all_messages)
+        members_df = pd.DataFrame(all_members)
+        members_df = members_df[['user_id', 'name', 'nickname']]
+        messages_df = messages_df[['user_id', 'text']]
+        messages_df.columns = ['index', 'messages']
+        members_df.columns = ['index', 'name', 'nickname']
+        merged_df = pd.merge(members_df, messages_df)
+        merged_df = merged_df.groupby('index').agg(set)
+        return merged_df.to_csv(), 200
     else:
         print("all_members", all_members)
         return "all_members is unexpected... oops", 201
