@@ -16,27 +16,63 @@ def post_a_message():
     pass
 
 
-def make_get_messages_by_group_id_url_params():
+def make_get_group_by_id_url_params():
     """Make the API URL"""
     base = "https://api.groupme.com/v3"
     base_grp = base + "/groups"
     base_grp_id = base_grp + "/{}"
-    base_grp_id_msg = base_grp_id + "/messages"
-    URL = base_grp_id_msg.format(
-        config.GROUPME_GROUP_ID,
-    )
+    URL = base_grp_id.format(config.GROUPME_GROUP_ID,)
     PARAMS = {"token": config.GROUPME_ACCESS_TOKEN}
     return URL, PARAMS
 
 
-def find_latest_message():
+def make_get_messages_by_group_id_url_params():
+    """Make the API URL"""
+    base_grp_id_url, PARAMS = make_get_group_by_id_url_params()
+    base_grp_id_msg = base_grp_id_url + "/messages"
+    URL = base_grp_id_msg.format(config.GROUPME_GROUP_ID,)
+    return URL, PARAMS
+
+
+def find_all_messages():
     URL, PARAMS = make_get_messages_by_group_id_url_params()
     response = requests.get(url=URL, params=PARAMS)
     response_body = response.json()
-    return response_body.get('response', {}).get('messages', [None])[0]
+    return response_body.get("response", {}).get("messages", [None])
 
 
-@app.route("/get-latest-message-object/", methods=['GET'])
+def find_latest_message():
+    return find_all_messages()[0]
+
+
+def find_all_members():
+    URL, PARAMS = make_get_group_by_id_url_params()
+    response = requests.get(url=URL, params=PARAMS)
+    response_body = response.json()
+    return response_body.get("response", {}).get("members", [None])
+
+
+@app.route("/get-all-messages/", methods=["GET"])
+def get_all_messages():
+    all_messages = find_all_messages()
+    if all_messages is not None and type(all_messages) is list:
+        return jsonify(all_messages), 200
+    else:
+        print("all_messages", all_messages)
+        return "all_messages is unexpected... oops", 201
+
+
+@app.route("/get-all-members/", methods=["GET"])
+def get_all_members():
+    all_members = find_all_members()
+    if all_members is not None and type(all_members) is list:
+        return jsonify(all_members), 200
+    else:
+        print("all_members", all_members)
+        return "all_members is unexpected... oops", 201
+
+
+@app.route("/get-latest-message-object/", methods=["GET"])
 def get_latest_message_object():
     latest_message = find_latest_message()
 
