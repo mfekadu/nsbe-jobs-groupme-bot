@@ -139,6 +139,7 @@ def find_all_members():
     return response_body.get("response", {}).get("members", [None])
 
 
+@app.route("/get-all-messages", methods=["GET"])
 @app.route("/get-all-messages/<int:page_limit>", methods=["GET"])
 def get_all_messages(page_limit=100):
     """
@@ -247,12 +248,12 @@ def get_name_nickname_messages(page_limit=2):
     if ("messages.json" in os.listdir()) and (
         os.path.getctime("messages.json") - time.time()
     ) < QUARTER_HOUR:
-        with open("messages.json") as f:
+        with open("messages.json", 'r') as f:
             all_messages = json.load(f)
     else:
         all_messages = find_all_messages(page_limit=page_limit)
-        with open("messages.json") as f:
-            json.dump(all_messages)
+        with open("messages.json", 'w') as f:
+            f.write(json.dumps(all_messages))
     if all_members is not None and type(all_members) is list:
         messages_df = pd.DataFrame(all_messages)
         members_df = pd.DataFrame(all_members)
