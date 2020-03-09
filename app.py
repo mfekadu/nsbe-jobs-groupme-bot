@@ -73,6 +73,7 @@ def find_all_messages(page_limit=2):
                 }, "type": "membership.nickname_changed"
             },
             "text": "Foo Bar changed name to Foo Bar Fizz Buzz",
+            "sender_id": "system",
             "sender_type": "system",
             "user_id": "system"
           }, ...
@@ -132,9 +133,13 @@ def find_all_members():
     return response_body.get("response", {}).get("members", [None])
 
 
-@app.route("/get-all-messages/", methods=["GET"])
-def get_all_messages():
-    all_messages = find_all_messages()
+@app.route("/get-all-messages/<int:page_limit>", methods=["GET"])
+def get_all_messages(page_limit=100):
+    """
+    page_limit=100
+    because 100 messages times 100 pages = 10,000 msgs. That's enough.
+    """
+    all_messages = find_all_messages(page_limit=page_limit)
     if all_messages is not None and type(all_messages) is list:
         return jsonify(all_messages), 200
     else:
@@ -193,6 +198,20 @@ def get_relevant_data_as_2d_list(members_data):
     return MembersTable(ids, names, nicknames, user_ids)
 
 
+def get_relevant_message_data_as_table(messages_data):
+    """
+    See output of `find_all_messages`
+    """
+    keys = {"id": "id", "sender_id": "sender_id", "text": "text"}
+    spec = [keys]
+    data_filtered = glom(messages_data, spec)
+    ids = glom(data_filtered, ["id"])
+    sender_ids = glom(data_filtered, ["sender_id"])
+    texts = glom(data_filtered, ["text"])
+    MessagesTable = namedtuple("MessagesTable", "ids sender_ids texts")
+    return MessagesTable(ids, sender_ids, texts)
+
+
 @app.route("/get-all-members-table/", methods=["GET"])
 def get_all_members_table():
     all_members = find_all_members()
@@ -204,22 +223,35 @@ def get_all_members_table():
         return "all_members is unexpected... oops", 201
 
 
-@app.route("/get-name-nickname-messages/", methods=["GET"])
-def get_name_nickname_messages():
+@app.route("/get-name-nickname-messages", methods=["GET"])
+@app.route("/get-name-nickname-messages/<int:page_limit>", methods=["GET"])
+def get_name_nickname_messages(page_limit=2):
     """
     TODO: consider the scalability concerns of getting all msgs for all members
     """
     all_members = find_all_members()
+    # all_messages = find_all_messages(page_limit=page_limit)
     if all_members is not None and type(all_members) is list:
         all_members_table = get_relevant_data_as_2d_list(all_members)
-        df = pd.DataFrame()
-        df[
+        # all_messages_table = get_relevant_message_data_as_table(all_messages)
+        members_df = pd.DataFrame()
+        members_df[
             "group_member_index"
         ] = all_members_table.ids  # member ids are unique to group  # noqa
-        df["names"] = all_members_table.names
-        df["nicknames"] = all_members_table.nicknames
-        df["messages"] = pd.Series(dtype=object)
-        # df.to_csv("data.csv")
+        members_df["names"] = all_members_table.names
+        members_df["nicknames"] = all_members_table.nicknames
+        members_df.to_csv("members.csv")
+        exit()
+        messages_df = pd.DataFrame()
+        messages_df[
+            "group_message_index"
+        ] = all_messages_table.ids  # message ids are unique to group
+        messages_df["member_index"] = all_messages_table.sender_ids
+        messages_df['text'] = all_messages_table.texts
+
+        # only user messages
+        messages_df = messages_df[messages_df['member_index'] != "system"]
+
         return jsonify(all_members_table), 200
     else:
         print("all_members", all_members)
