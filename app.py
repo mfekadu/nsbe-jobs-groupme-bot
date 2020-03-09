@@ -7,6 +7,7 @@ from collections import namedtuple
 from enum import Enum
 from random import randint
 from time import sleep
+import sys
 
 app = Flask(__name__)
 
@@ -103,7 +104,15 @@ def find_all_messages(page_limit=2):
         response_body = response.json()
         msgs = response_body.get("response", {}).get("messages", [None])
         messages += msgs
-        sleep(randint(SLEEP_MIN, SLEEP_MAX))
+
+        rand_sleep = randint(SLEEP_MIN, SLEEP_MAX)
+        for remaining in range(rand_sleep, 0, -1):
+            sys.stdout.write("\r")
+            sys.stdout.write("{:2d} seconds remaining.".format(remaining))
+            sys.stdout.flush()
+            sleep(1)
+        sys.stdout.write("\rComplete!            \n")
+
         page += 1
     return messages
 
