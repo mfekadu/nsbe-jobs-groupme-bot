@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request
-
+from glom import glom
 import config
 import requests
 
@@ -81,6 +81,33 @@ def get_latest_message_object():
     else:
         print("latest_message", latest_message)
         return "latest_message is unexpected... oops", 201
+
+
+def get_relevant_data_as_2d_list(members_data):
+    """
+    Given members_data as JSON
+    Extract useful keys
+    Return as 2D list
+    """
+    keys = {"id": "id", "name": "name", "nickname": "nickname", "user_id": "user_id"}
+    spec = [keys]
+    data_filtered = glom(members_data, spec)
+    ids = glom(data_filtered, ["id"])
+    names = glom(data_filtered, ["name"])
+    nicknames = glom(data_filtered, ["nickname"])
+    user_ids = glom(data_filtered, ["user_id"])
+    return (ids, names, nicknames, user_ids)
+
+
+@app.route("/get-all-members-simple/", methods=["GET"])
+def get_all_members_simple():
+    all_members = find_all_members()
+    if all_members is not None and type(all_members) is list:
+        all_members_simple = get_relevant_data_as_2d_list(all_members)
+        return jsonify(all_members_simple), 200
+    else:
+        print("all_members", all_members)
+        return "all_members is unexpected... oops", 201
 
 
 @app.route("/new-groupme-message")
