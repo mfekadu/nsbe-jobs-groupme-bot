@@ -11,6 +11,7 @@ glom = "*"
 requests = "*"
 gunicorn = "*"
 black = "*"
+pandas = "*"
 
 [requires]
 python_version = "3.8"
