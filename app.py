@@ -53,8 +53,11 @@ class EventType(Enum):
     changed = 2  # "type": "membership.nickname_changed"
 
 
-def find_all_messages():
+def find_all_messages(page_limit=2):
     """
+    Args:
+        page_limit: number paginations/iterations of requests for 100 messages
+
     Resources:
         api_docs: https://dev.groupme.com/docs/v3#messages
 
@@ -87,25 +90,26 @@ def find_all_messages():
     response_body = response.json()
     messages = []
     messages += response_body.get("response", {}).get("messages", [None])
-    try:
-        while response.status_code != 304:  # loop until 304 code, see api_docs
-            before_id = messages[-1]["id"]  # messages is sorted, latest first
-            print("before_id:", before_id)
-            # wow! dictionary unpacking is fun `{**PARAMS}` :)
-            response = requests.get(
-                url=URL, params={**PARAMS, "before_id": before_id}, timeout=TIMEOUT
-            )
-            response_body = response.json()
-            msgs = response_body.get("response", {}).get("messages", [None])
-            messages += msgs
-            sleep(randint(SLEEP_MIN, SLEEP_MAX))
-    except Exception as e:
-        print(e)
+    page = 1
+    while response.status_code != 304:  # loop until 304 code, see api_docs
+        if page >= page_limit:
+            break
+        before_id = messages[-1]["id"]  # messages is sorted, latest first
+        print("before_id:", before_id)
+        # wow! dictionary unpacking is fun `{**PARAMS}` :)
+        response = requests.get(
+            url=URL, params={**PARAMS, "before_id": before_id}, timeout=TIMEOUT
+        )
+        response_body = response.json()
+        msgs = response_body.get("response", {}).get("messages", [None])
+        messages += msgs
+        sleep(randint(SLEEP_MIN, SLEEP_MAX))
+        page += 1
     return messages
 
 
 def find_latest_message():
-    return find_all_messages()[0]
+    return find_all_messages(page_limit=1)[0]
 
 
 def find_all_members():
