@@ -102,6 +102,8 @@ def find_all_messages(page_limit=2):
         response = requests.get(
             url=URL, params={**PARAMS, "before_id": before_id}, timeout=TIMEOUT
         )
+        if response.status_code == 304:
+            break
         response_body = response.json()
         msgs = response_body.get("response", {}).get("messages", [None])
         messages += msgs
@@ -115,6 +117,7 @@ def find_all_messages(page_limit=2):
         sys.stdout.write("\rComplete!            \n")
 
         page += 1
+    print("returning list of messages...")
     return messages
 
 
