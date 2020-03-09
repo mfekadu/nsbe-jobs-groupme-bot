@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response, stream_with_context
 from glom import glom
 import config
 import requests
@@ -18,8 +18,10 @@ app = Flask(__name__)
 TIMEOUT = 5
 
 # https://www.scraperapi.com/blog/5-tips-for-web-scraping
-SLEEP_MIN = 2
-SLEEP_MAX = 10
+# TODO: set this to 0 to please Heroku's request timeout, should be fine,
+# TODO: but if GroupMe gets mad then let's make sure sleep actually occurs
+SLEEP_MIN = 0
+SLEEP_MAX = 0
 
 
 @app.route("/")
@@ -248,25 +250,86 @@ def get_name_nickname_messages(page_limit=2):
     if ("messages.json" in os.listdir()) and (
         os.path.getctime("messages.json") - time.time()
     ) < QUARTER_HOUR:
-        with open("messages.json", 'r') as f:
+        with open("messages.json", "r") as f:
             all_messages = json.load(f)
     else:
         all_messages = find_all_messages(page_limit=page_limit)
-        with open("messages.json", 'w') as f:
+        with open("messages.json", "w") as f:
             f.write(json.dumps(all_messages))
     if all_members is not None and type(all_members) is list:
         messages_df = pd.DataFrame(all_messages)
         members_df = pd.DataFrame(all_members)
-        members_df = members_df[['user_id', 'name', 'nickname']]
-        messages_df = messages_df[['user_id', 'text']]
-        messages_df.columns = ['index', 'messages']
-        members_df.columns = ['index', 'name', 'nickname']
+        members_df = members_df[["user_id", "name", "nickname"]]
+        messages_df = messages_df[["user_id", "text"]]
+        messages_df.columns = ["index", "messages"]
+        members_df.columns = ["index", "name", "nickname"]
         merged_df = pd.merge(members_df, messages_df)
-        merged_df = merged_df.groupby('index').agg(set)
+        merged_df = merged_df.groupby("index").agg(set)
         return merged_df.to_csv(), 200
     else:
         print("all_members", all_members)
         return "all_members is unexpected... oops", 201
+
+
+def yield_all_messages(page_limit=2):
+    """
+    https://librenepal.com/article/flask-and-heroku-timeout/
+    https://www.programiz.com/python-programming/generator
+    https://stackoverflow.com/questions/4622234/how-to-convert-a-list-to-a-csv-in-python/4622245
+    https://stackoverflow.com/questions/37698518/python-flask-how-to-return-a-csv-one-line-at-a-time
+    https://flask.palletsprojects.com/en/1.1.x/patterns/streaming/
+    """
+    URL, PARAMS = make_get_messages_by_group_id_url_params()
+    response = requests.get(url=URL, params=PARAMS, timeout=TIMEOUT)
+    response_body = response.json()
+    messages = []
+    messages += response_body.get("response", {}).get("messages", [None])
+    page = 1
+
+    print("yielding csv of `messages`...")
+    yield pd.DataFrame(messages).to_csv()
+
+    while response.status_code != 304:  # loop until 304 code, see api_docs
+        if page >= page_limit:
+            break
+        before_id = messages[-1]["id"]  # messages is sorted, latest first
+        print("before_id:", before_id)
+        # wow! dictionary unpacking is fun `{**PARAMS}` :)
+        response = requests.get(
+            url=URL, params={**PARAMS, "before_id": before_id}, timeout=TIMEOUT
+        )
+        if response.status_code == 304:
+            break
+        response_body = response.json()
+        msgs = response_body.get("response", {}).get("messages", [None])
+        messages += msgs
+
+        rand_sleep = randint(SLEEP_MIN, SLEEP_MAX)
+        for remaining in range(rand_sleep, 0, -1):
+            sys.stdout.write("\r")
+            sys.stdout.write("{:2d} seconds remaining.".format(remaining))
+            sys.stdout.flush()
+            sleep(1)
+        sys.stdout.write("\rComplete!            \n")
+
+        page += 1
+        print("yielding csv of `msgs`...")
+        yield pd.DataFrame(msgs).to_csv()
+
+    with open("messages.json", "w") as f:
+        f.write(json.dumps(messages))
+
+    # return pd.DataFrame(messages).to_csv(), 200
+
+
+@app.route("/yield-all-messages")
+@app.route("/check-get-nickname-messages")
+@app.route("/check")
+@app.route("/yield-all-messages/<int:page_limit>")
+@app.route("/check-get-nickname-messages/<int:page_limit>")
+@app.route("/check/<int:page_limit>")
+def check(page_limit=100):
+    return Response(yield_all_messages(page_limit=page_limit), mimetype="text/html")
 
 
 @app.route("/new-groupme-message")
